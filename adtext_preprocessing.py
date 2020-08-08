@@ -3,7 +3,13 @@ import pandas as pd
 import numpy as np
 import os
 import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+import jieba
+from nltk.stem import WordNetLemmatizer 
+from nltk.corpus import stopwords as StopWords
 
+wnl = WordNetLemmatizer() 
+NUM_CLASS=2
 data_dir='AD_data'
 resfile=os.path.join(data_dir,'train_set.csv')
 # whole_text=
@@ -45,6 +51,45 @@ def clear_perAtranscript(corpus,par):
             cleared+=line
             cnt+=1
     return cleared
+def chi_stopwords():
+    stopwords = [line.strip() for line in open(os.path.join('AD_data','chi_stopwords.txt'),encoding='UTF-8').readlines()]
+    return stopwords
+def eng_stopwords():
+    stopwords = [line.strip() for line in open(os.path.join('AD_data','eng_stopwords.txt'),encoding='UTF-8').readlines()]
+    return stopwords
+
+def split_stop(sentence,isChinese):
+  if isChinese==1:
+    # split words
+    sentence_seg = jieba.cut(sentence)
+    sentence = ' '.join(sentence_seg)
+    sentence=sentence.split(' ')
+    # print(sentence)
+    stopwords = chi_stopwords()
+    res = ''
+    for word in sentence:
+        if word not in stopwords:
+            res += word
+            res += " "
+  else:
+    # lemmatize
+    sentence=sentence.split(' ')
+    for word in sentence:
+    #   if word!=' ':
+        # try:
+        word=word.replace(' ','')
+        word = word.lower() 
+        word=wnl.lemmatize(word)
+    # remove stop words
+    res= [w for w in sentence if w not in StopWords.words('english')]
+    # stopwords = eng_stopwords()
+    # res = ''
+    # for word in sentence:
+        # if word not in stopwords:
+            # res += word
+            # res += " "
+    res = " ".join(res)
+  return res
 
 if __name__ == "__main__":
     transcript=[]
@@ -77,15 +122,42 @@ if __name__ == "__main__":
                     transcript.append(cleared)
                     label.append(hasAD)
                     isChinese.append(0)
+                cnt+=1
+        #         if cnt>=10:
+        #             break
+        # if cnt>=10:
+        #     break
+    
+    for i in range(len(transcript)):
+        if isChinese[i]==1:
+            transcript[i]=transcript[i].replace(' ','')
+        transcript[i]=split_stop(transcript[i],isChinese[i])
+        # print(transcript[i])
+    #Vectorize
+    vector = TfidfVectorizer()
+    tf_data = vector.fit_transform(transcript)
+    vecDict=vector.vocabulary_
+    # print(vecDict)
+    for i in range(len(transcript)):
+        script=transcript[i].split(' ')
+        transcript[i]=''
+        for w in script:
+            if w in vecDict:
+                transcript[i]+=str(vecDict[w])
+                transcript[i]+=' '
+    # for tr in transcript:
+        # print(tr)
+    lengthes=[len(transcript[i]) for i in range(len(transcript))]
+    print(min(lengthes),max(lengthes),np.mean(lengthes))
 
-                # cnt+=1
-                # if cnt==3:
-                #     exit()
-    # print(list(set(all_setname)))
+    maxlen=500
     resdf=pd.DataFrame()
     resdf['transcript']=transcript
     resdf['label']=label
     resdf['corpus']=all_setname
     resdf['isChinese']=isChinese
-    resdf.to_csv(resfile,index=False,encoding='utf-8')
+    
+    # train_x_chi=resdf.drop(resdf[resdf.isChinese==0].index)
+    
+    resdf.to_csv(os.path.join(data_dir,'val.csv'),index=False,encoding='utf-8')
 
